@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+
+# env
+.env
+
+# vscode
+.vscode/
+
+# logs
+logs/
+*.log
+
+# runtime data
+storage/
+storage/auth/state.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# build
+dist/
+build/
+
+# temp
+tmp/
+temp/

@@ -1,0 +1,4 @@
+{
+	"ignore": ["storage/", "uploads/", "*.xlsx", "*.xls"],
+	"ext": "js,json"
+}
