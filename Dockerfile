@@ -1,5 +1,5 @@
 # 1. Rasmiy Playwright imiji
-FROM mcr.microsoft.com/playwright:v1.44.0-jammy
+FROM mcr.microsoft.com/playwright:v1.60.0-noble
 
 # 2. Ishchi papka
 WORKDIR /app
