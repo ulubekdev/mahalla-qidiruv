@@ -1,19 +1,16 @@
-# 1. Playwright va Linux kutubxonalari tayyor o'rnatilgan rasmiy qutini olamiz
+# 1. Rasmiy Playwright imiji
 FROM mcr.microsoft.com/playwright:v1.44.0-jammy
 
-# 2. Server ichida loyiha uchun papka ochamiz
+# 2. Ishchi papka
 WORKDIR /app
 
-# 3. Keshni optimallashtirish uchun package fayllarni ko'chirib, yuklab olamiz
+# 3. Kutubxonalarni o'rnatish
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
-# 4. Loyihamizning qolgan barcha kodlarini serverga ko'chiramiz
+# 4. Kodlarni ko'chirish
 COPY . .
 
-# 5. Render serverida virtual ekran (Xvfb) yaratib, loyihani ishga tushiramiz
-# Bu Render-ga o'xshash ekransiz serverlarda brauzer xatosiz ochilishi uchun kerak
-RUN apt-get update && apt-get install -y xvfb
-
+# 5. Loyihani to'g'ridan-to'g'ri ishga tushirish (xvfb-run'siz)
 EXPOSE 3000
-CMD ["xvfb-run", "--server-args='-screen 0 1280x1024x24'", "node", "server.js"]
+CMD ["node", "server.js"]

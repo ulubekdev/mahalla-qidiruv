@@ -13,8 +13,12 @@ function getStateFile(userId) {
 
 async function openBrowser() {
 	return chromium.launch({
-		headless: true,
-		args: ["--no-sandbox", "--disable-setuid-sandbox"],
+		headless: true, // Serverda ekran yo'qligi uchun majburiy!
+		args: [
+			"--no-sandbox",
+			"--disable-setuid-sandbox",
+			"--disable-dev-shm-usage", // Server tezroq ishlashi va qotib qolmasligi uchun
+		],
 	});
 }
 
