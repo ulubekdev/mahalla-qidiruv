@@ -11,6 +11,7 @@
 		"nodemon": "^3.1.14"
 	},
 	"scripts": {
+		"postinstall": "npx playwright install chromium",
 		"start": "node server.js"
 	}
 }

@@ -13,8 +13,8 @@ function getStateFile(userId) {
 
 async function openBrowser() {
 	return chromium.launch({
-		headless: false,
-		args: ["--start-maximized"],
+		headless: true,
+		args: ["--no-sandbox", "--disable-setuid-sandbox"],
 	});
 }
 
