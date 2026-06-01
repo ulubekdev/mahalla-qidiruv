@@ -1,6 +1,5 @@
 import { addLog } from "./logs.js";
 import { setProgress } from "./progress.js";
-import { loginDone } from "./auth.js";
 
 export const socket = io();
 
@@ -17,10 +16,16 @@ socket.on("login_confirmed", () => {
 socket.on("progress", ({ current, total, topildi, otkazildi, xato }) => {
 	const pct = total ? Math.round((current / total) * 100) : 0;
 	setProgress(pct);
-
 	document.querySelector(".stat .stat-val.green").textContent = topildi;
 	document.querySelector(".stat .stat-val.yellow").textContent = otkazildi;
 	document.querySelector(".stat .stat-val.red").textContent = xato;
+});
+
+socket.on("status", (s) => {
+	if (s === "idle") {
+		document.getElementById("startBtn").disabled = false;
+		document.getElementById("stopBtn").disabled = true;
+	}
 });
 
 socket.on("done", ({ topildi, otkazildi, xato, umumiyVaqt, downloadUrl }) => {

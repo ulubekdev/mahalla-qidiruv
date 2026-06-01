@@ -38,7 +38,7 @@ export async function startBot() {
 			userId,
 		});
 
-		addLog("Loyiha start bo‘ldi", "success");
+		addLog("Qidiruv boshlandi", "success");
 	} catch (err) {
 		addLog(err.message, "error");
 	}

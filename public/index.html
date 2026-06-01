@@ -14,6 +14,7 @@
 			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
 			rel="stylesheet"
 		/>
+		<link rel="icon" type="image/png" href="/favicon.png">
 	</head>
 	<body>
 		<div class="container">
@@ -88,15 +89,63 @@
 				</div>
 			</div>
 
-			<!-- Login qilgandan keyin Tayyor button bosish -->
-			<div id="loginBanner">
-				<p>
-					<b>Brauzerda login qiling</b> — username va parolni
-					kiriting, keyin quyidagi tugmani bosing.
-				</p>
-				<button class="btn btn-success" onclick="loginDone()">
-					✓ Tayyor
-				</button>
+			<div id="tokenPopup">
+				<div id="tokenModal">
+					<div class="token-header">
+						<h3>🔐 Token kerak</h3>
+						<p>Tokenni olish uchun:</p>
+					</div>
+
+					<ol class="token-steps">
+						<li>
+							<a href="https://mahalla.ijro.uz" target="_blank"
+								>mahalla.ijro.uz</a
+							>
+							ga kiring va login qiling
+						</li>
+						<li>Klaviaturada <kbd>F12</kbd> bosing</li>
+						<li><strong>Application</strong> tabini oching</li>
+						<li>Chap tomon menulardan <kbd>Local storage</kbd> ustiga bosing</li>
+						<li><code>access_token </code> dagi value dan nusxa oling</li>
+					</ol>
+
+					<div class="token-input-wrap">
+						<textarea
+							id="tokenInput"
+							placeholder="eyJhbGciOiJSUzI1NiJ9..."
+							rows="3"
+							spellcheck="false"
+						></textarea>
+					</div>
+
+					<!-- XATO XABAR -->
+					<div
+						id="tokenError"
+						class="token-error"
+						style="display: none"
+					></div>
+
+					<div class="token-warning">
+						⏱ Token 2 kun amal qiladi. Keyin qaytadan kiritishingiz
+						kerak bo'ladi.
+					</div>
+
+					<div class="token-actions">
+						<button
+							id="tokenSaveBtn"
+							class="btn-token-save"
+							onclick="saveToken()"
+						>
+							Saqlash
+						</button>
+						<button
+							class="btn-token-cancel"
+							onclick="closeTokenPopup()"
+						>
+							Bekor
+						</button>
+					</div>
+				</div>
 			</div>
 
 			<!-- PROGRESS -->
