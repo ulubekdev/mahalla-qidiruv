@@ -154,11 +154,11 @@ module.exports = (io) => {
 						if (msg.includes(403)) {
 							log(
 								"error",
-								`[${i + 1}/${data.length}] ❌ ${pinflMasked} — Ruxsat yo'q (403)`,
+								`[${i + 1}/${data.length}] ❌ ${pinflMasked} — Ruxsat yo'q (403) ${msg}`,
 							);
 							xatoFuqarolar.push({
 								PINFL: pinfl,
-								SABAB: `Ruxsat yo'q (403)`,
+								SABAB: `Ruxsat yo'q (403) ${msg}`,
 							});
 							xato++;
 
