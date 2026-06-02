@@ -152,13 +152,15 @@ module.exports = (io) => {
 						}
 
 						if (msg.includes(403)) {
-							log(
-								"error",
-								`[${i + 1}/${data.length}] ❌ ${pinflMasked} — Ruxsat yo'q (403) ${msg}`,
+							console.error(
+								"403 DETAL:",
+								err.response?.data || err,
 							);
+							log("error", `[${i + 1}/${data.length}] ❌ ${pinflMasked} — Ruxsat yo'q (403)`);
+							
 							xatoFuqarolar.push({
 								PINFL: pinfl,
-								SABAB: `Ruxsat yo'q (403) ${msg}`,
+								SABAB: `Ruxsat yo'q (403)`,
 							});
 							xato++;
 
@@ -169,7 +171,7 @@ module.exports = (io) => {
 							deleteToken(userId);
 							isRunning = false;
 							break;
-						} 
+						}
 					}
 
 					socket.emit("progress", {
