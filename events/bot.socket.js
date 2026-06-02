@@ -138,15 +138,34 @@ module.exports = (io) => {
 						if (!isRunning) break;
 
 						const msg = err.response?.data?.message || err.message;
-						log(
-							"error",
-							`[${i + 1}/${data.length}] ❌ ${pinflMasked} — Xatolik yuz berdi`,
-						);
-						xatoFuqarolar.push({
-							PINFL: pinfl,
-							SABAB: "Xatolik yuz berdi",
-						});
-						xato++;
+
+						if (
+							msg
+								.toLowerCase()
+								.includes(
+									"Request failed with status code 400".toLowerCase(),
+								)
+						) {
+							log(
+								"warn",
+								`[${i + 1}/${data.length}] ⚠️ ${pinflMasked} — Fuqaro ma'lumoti topilmadi (${formatDuration(dur)})`,
+							);
+							xatoFuqarolar.push({
+								PINFL: pinfl,
+								SABAB: `Fuqarolikni aniqlab bo'lmadi`,
+							});
+							xato++;
+						} else {
+							log(
+								"error",
+								`[${i + 1}/${data.length}] ❌ ${pinflMasked} — Xato: ${msg} (${formatDuration(dur)})`,
+							);
+							xatoFuqarolar.push({
+								PINFL: pinfl,
+								SABAB: `Xato: ${msg}`,
+							});
+							xato++;
+						}
 					}
 
 					socket.emit("progress", {
