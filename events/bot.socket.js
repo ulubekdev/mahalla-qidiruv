@@ -139,7 +139,7 @@ module.exports = (io) => {
 
 						const msg = err.response?.data?.message || err.message;
 
-						if (msg.toLowerCase().includes(400)) {
+						if (msg.includes(400)) {
 							log(
 								"warn",
 								`[${i + 1}/${data.length}] ⚠️ ${pinflMasked} — Fuqaro ma'lumoti topilmadi`,
@@ -151,7 +151,7 @@ module.exports = (io) => {
 							xato++;
 						}
 
-						if (msg.toLowerCase().includes(403)) {
+						if (msg.includes(403)) {
 							log(
 								"error",
 								`[${i + 1}/${data.length}] ❌ ${pinflMasked} — Ruxsat yo'q (403)`,
@@ -169,19 +169,7 @@ module.exports = (io) => {
 							deleteToken(userId);
 							isRunning = false;
 							break;
-						}
-
-						else {
-							log(
-								"error",
-								`[${i + 1}/${data.length}] ❌ ${pinflMasked} — Xato: ${msg}`,
-							);
-							xatoFuqarolar.push({
-								PINFL: pinfl,
-								SABAB: `Xato: ${msg}`,
-							});
-							xato++;
-						}
+						} 
 					}
 
 					socket.emit("progress", {
