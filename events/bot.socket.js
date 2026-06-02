@@ -115,7 +115,7 @@ module.exports = (io) => {
 
 						log(
 							"success",
-							`[${i + 1}/${data.length}] ✅ ${pinflMasked} → ${fish} (${formatDuration(dur)})`,
+							`[${i + 1}/${data.length}] ✅ ${pinflMasked} → ${fish}`,
 						);
 						yangiFuqarolar.push({ PINFL: pinfl, FISH: fish });
 						topildi++;
@@ -139,26 +139,42 @@ module.exports = (io) => {
 
 						const msg = err.response?.data?.message || err.message;
 
-						if (
-							msg
-								.toLowerCase()
-								.includes(
-									"Request failed with status code 400".toLowerCase(),
-								)
-						) {
+						if (msg.toLowerCase().includes(400)) {
 							log(
 								"warn",
-								`[${i + 1}/${data.length}] ⚠️ ${pinflMasked} — Fuqaro ma'lumoti topilmadi (${formatDuration(dur)})`,
+								`[${i + 1}/${data.length}] ⚠️ ${pinflMasked} — Fuqaro ma'lumoti topilmadi`,
 							);
 							xatoFuqarolar.push({
 								PINFL: pinfl,
 								SABAB: `Fuqarolikni aniqlab bo'lmadi`,
 							});
 							xato++;
-						} else {
+						}
+
+						if (msg.toLowerCase().includes(403)) {
 							log(
 								"error",
-								`[${i + 1}/${data.length}] ❌ ${pinflMasked} — Xato: ${msg} (${formatDuration(dur)})`,
+								`[${i + 1}/${data.length}] ❌ ${pinflMasked} — Ruxsat yo'q (403)`,
+							);
+							xatoFuqarolar.push({
+								PINFL: pinfl,
+								SABAB: `Ruxsat yo'q (403)`,
+							});
+							xato++;
+
+							socket.emit(
+								"token_error",
+								"Token noto'g'ri yoki eskirgan. Qaytadan login qiling.",
+							);
+							deleteToken(userId);
+							isRunning = false;
+							break;
+						}
+
+						else {
+							log(
+								"error",
+								`[${i + 1}/${data.length}] ❌ ${pinflMasked} — Xato: ${msg}`,
 							);
 							xatoFuqarolar.push({
 								PINFL: pinfl,
