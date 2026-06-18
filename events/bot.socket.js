@@ -9,7 +9,7 @@ const {
 	deleteToken,
 	verifyToken,
 } = require("../services/token.service");
-const { createApi, getCitizenInfo } = require("../services/bot.api.service");
+const { createApi, processPinfl } = require("../services/bot.api.service");
 const formatDuration = require("../helpers/formatDuration");
 
 module.exports = (io) => {
@@ -34,13 +34,9 @@ module.exports = (io) => {
 		// =========================
 		socket.on("save_token", async ({ userId, token }) => {
 			const cleanToken = token.replace(/^Bearer\s+/i, "").trim();
+			if (!cleanToken) return socket.emit("token_error", "Token bo'sh!");
 
-			if (!cleanToken) {
-				return socket.emit("token_error", "Token bo'sh!");
-			}
-
-			socket.emit("token_verifying"); // loading holati
-
+			socket.emit("token_verifying");
 			const valid = await verifyToken(cleanToken);
 
 			if (!valid) {
@@ -57,11 +53,15 @@ module.exports = (io) => {
 		// =========================
 		// START BOT
 		// =========================
-		socket.on("start_bot", async ({ filePath, userId }) => {
+		socket.on("start_bot", async ({ filePath, userId, mahallaId }) => {
 			if (isRunning) return log("warn", "Bot allaqachon ishlayapti!");
 			if (!userId) return log("error", "userId yo'q!");
 
-			// Token tekshirish
+			const ourMahallaId = mahallaId || process.env.MAHALLA_ID;
+			if (!ourMahallaId) {
+				return log("error", "Mahalla ID berilmagan!");
+			}
+
 			const token = getToken(userId);
 			if (!token) {
 				socket.emit("need_token");
@@ -87,6 +87,7 @@ module.exports = (io) => {
 				const yangiFuqarolar = [];
 				const xatoFuqarolar = [];
 				let topildi = 0,
+					otkazildi = 0,
 					xato = 0;
 				const pinflVaqtlari = [];
 				const boshlanishVaqti = Date.now();
@@ -109,21 +110,43 @@ module.exports = (io) => {
 					const t0 = Date.now();
 
 					try {
-						const fish = await getCitizenInfo(api, pinfl);
+						const result = await processPinfl(
+							api,
+							pinfl,
+							ourMahallaId,
+						);
 						const dur = Date.now() - t0;
 						pinflVaqtlari.push(dur);
 
-						log(
-							"success",
-							`[${i + 1}/${data.length}] ✅ ${pinflMasked} → ${fish}`,
-						);
-						yangiFuqarolar.push({ PINFL: pinfl, FISH: fish });
-						topildi++;
+						if (result.status === "new") {
+							log(
+								"success",
+								`[${i + 1}/${data.length}] ✅ ${pinflMasked} → ${result.fullName} (${formatDuration(dur)})`,
+							);
+							yangiFuqarolar.push({
+								PINFL: pinfl,
+								FISH: result.fullName,
+							});
+							topildi++;
+						} else if (result.status === "exists") {
+							log(
+								"info",
+								`[${i + 1}/${data.length}] ⏭️ ${pinflMasked} — avval qo'shilgan (${formatDuration(dur)})`,
+							);
+							otkazildi++;
+						} else {
+							// skip — boshqa mahalla yoki propiska mos kelmaydi
+							log(
+								"warn",
+								`[${i + 1}/${data.length}] ⏭️ ${pinflMasked} — ${result.reason} (${formatDuration(dur)})`,
+							);
+							otkazildi++;
+						}
 					} catch (err) {
 						const dur = Date.now() - t0;
 						pinflVaqtlari.push(dur);
 
-						// Token eskirgan — tokenni o'chirib popup chiqar
+						// Token eskirgan
 						if (err.response?.status === 401) {
 							deleteToken(userId);
 							log(
@@ -137,48 +160,19 @@ module.exports = (io) => {
 
 						if (!isRunning) break;
 
-						const msg = err.response?.data?.message || err.message;
-
-						if (msg.includes(400)) {
-							log(
-								"warn",
-								`[${i + 1}/${data.length}] ⚠️ ${pinflMasked} — Fuqaro ma'lumoti topilmadi`,
-							);
-							xatoFuqarolar.push({
-								PINFL: pinfl,
-								SABAB: `Fuqarolikni aniqlab bo'lmadi`,
-							});
-							xato++;
-						}
-
-						if (msg.includes(403)) {
-							console.error(
-								"403 DETAL:",
-								err.response?.data || err,
-							);
-							log("error", `[${i + 1}/${data.length}] ❌ ${pinflMasked} — Ruxsat yo'q (403)`);
-							
-							xatoFuqarolar.push({
-								PINFL: pinfl,
-								SABAB: `Ruxsat yo'q (403)`,
-							});
-							xato++;
-
-							socket.emit(
-								"token_error",
-								"Token noto'g'ri yoki eskirgan. Qaytadan login qiling.",
-							);
-							deleteToken(userId);
-							isRunning = false;
-							break;
-						}
+						// BOSHQA HAR QANDAY XATO — SKIP qilinadi, Excel ga yozilmaydi
+						log(
+							"warn",
+							`[${i + 1}/${data.length}] ⏭️ ${pinflMasked} — xato`,
+						);
+						xato++;
 					}
 
 					socket.emit("progress", {
 						current: i + 1,
 						total: data.length,
 						topildi,
-						otkazildi: 0,
+						otkazildi,
 						xato,
 					});
 				}
@@ -199,7 +193,7 @@ module.exports = (io) => {
 
 				socket.emit("done", {
 					topildi,
-					otkazildi: 0,
+					otkazildi,
 					xato,
 					umumiyVaqt: formatDuration(umumiyVaqt),
 					ortachaVaqt: formatDuration(ortachaVaqt),
