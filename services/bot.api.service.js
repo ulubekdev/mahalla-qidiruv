@@ -3,8 +3,8 @@
 const axios = require("axios");
 const parseBirthDate = require("../helpers/parseBirthDate");
 
-const TIMEOUT_SHORT_INFO = Number(process.env.TIMEOUT_SHORT_INFO) || 6000;
-const TIMEOUT_EXISTS = Number(process.env.TIMEOUT_EXISTS) || 6000;
+const TIMEOUT_SHORT_INFO = Number(process.env.TIMEOUT_SHORT_INFO) || 8000;
+const TIMEOUT_EXISTS = Number(process.env.TIMEOUT_EXISTS) || 8000;
 const TIMEOUT_CHECK_ADDR = Number(process.env.TIMEOUT_CHECK_ADDR) || 8000;
 
 function createApi(token) {
@@ -22,9 +22,9 @@ function createApi(token) {
 
 async function getShortInfo(api, pinfl) {
 	const birthDate = parseBirthDate(pinfl);
-	if (!birthDate) throw new Error(`Noto'g'ri JSHSHR: ${pinfl}`);
+	const pinflMasked = pinfl.slice(0, -4) + "****";
+	if (!birthDate) throw new Error(`Noto'g'ri JSHSHR`);
 
-	const t0 = Date.now();
 	const res = await api.post(
 		"/citizen/get-citizen-short-info",
 		{ pinpp: pinfl, birth_date: birthDate },
@@ -32,13 +32,13 @@ async function getShortInfo(api, pinfl) {
 	);
 
 	const r = res.data?.response;
-	if (!r || !r.citizen_id) throw new Error("Fuqaro topilmadi");
+	if (!r || !r.citizen_id)
+		throw new Error(`Fuqaro topilmadi`);
 
 	return { citizenId: r.citizen_id, fullName: r.full_name || "" };
 }
 
 async function checkExists(api, citizenId) {
-	const t0 = Date.now();
 	const res = await api.post(
 		"/family-member/exists",
 		{ citizen_id: citizenId },
@@ -51,7 +51,6 @@ async function checkExists(api, citizenId) {
 }
 
 async function checkAddress(api, citizenId) {
-	const t0 = Date.now();
 	const res = await api.post(
 		"/citizen/check-citizen-address",
 		{ citizen_id: citizenId, should_refresh: false },
@@ -62,8 +61,12 @@ async function checkAddress(api, citizenId) {
 	return !!r?.exists;
 }
 
+// =========================
+// ASOSIY OQIM
+// pinflMasked endi shu yerda, parametr sifatida olinadi
+// =========================
 async function processPinfl(api, pinfl, ourMahallaId) {
-	const tStart = Date.now();
+	const pinflMasked = pinfl.slice(0, -4) + "****";
 
 	const { citizenId, fullName } = await getShortInfo(api, pinfl);
 	const { exists, mahallaId } = await checkExists(api, citizenId);
@@ -73,13 +76,19 @@ async function processPinfl(api, pinfl, ourMahallaId) {
 	}
 
 	if (exists && mahallaId !== ourMahallaId) {
-		return { status: "skip", reason: "Boshqa mahallada ro'yxatda" };
+		return {
+			status: "skip",
+			reason: `Boshqa mahallada ro'yxatda`,
+		};
 	}
 
 	const addressOk = await checkAddress(api, citizenId);
 
 	if (!addressOk) {
-		return { status: "skip", reason: "Propiska bu mahallada emas" };
+		return {
+			status: "skip",
+			reason: `Propiska bu mahallada emas`,
+		};
 	}
 
 	return { status: "new", fullName };

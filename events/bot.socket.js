@@ -11,6 +11,9 @@ const {
 } = require("../services/token.service");
 const { createApi, processPinfl } = require("../services/bot.api.service");
 const formatDuration = require("../helpers/formatDuration");
+const cleanPinfl = require("../helpers/cleanPinfl");
+
+const CONCURRENCY = Number(process.env.CONCURRENCY) || 3;
 
 module.exports = (io) => {
 	io.on("connection", (socket) => {
@@ -29,9 +32,6 @@ module.exports = (io) => {
 			socket.emit("status", "idle");
 		});
 
-		// =========================
-		// TOKEN SAQLASH + TEKSHIRISH
-		// =========================
 		socket.on("save_token", async ({ userId, token }) => {
 			const cleanToken = token.replace(/^Bearer\s+/i, "").trim();
 			if (!cleanToken) return socket.emit("token_error", "Token bo'sh!");
@@ -50,17 +50,12 @@ module.exports = (io) => {
 			socket.emit("token_ok");
 		});
 
-		// =========================
-		// START BOT
-		// =========================
 		socket.on("start_bot", async ({ filePath, userId, mahallaId }) => {
 			if (isRunning) return log("warn", "Bot allaqachon ishlayapti!");
 			if (!userId) return log("error", "userId yo'q!");
 
 			const ourMahallaId = mahallaId || process.env.MAHALLA_ID;
-			if (!ourMahallaId) {
-				return log("error", "Mahalla ID berilmagan!");
-			}
+			if (!ourMahallaId) return log("error", "Mahalla ID berilmagan!");
 
 			const token = getToken(userId);
 			if (!token) {
@@ -82,29 +77,56 @@ module.exports = (io) => {
 				}
 
 				const data = readExcel(filePath);
-				log("info", `📋 Jami ${data.length} ta PINFL`);
+				log(
+					"info",
+					`📋 Jami ${data.length} ta PINFL — ${CONCURRENCY} parallel`,
+				);
 
 				const yangiFuqarolar = [];
 				const xatoFuqarolar = [];
 				let topildi = 0,
 					otkazildi = 0,
 					xato = 0;
+				let processed = 0;
 				const pinflVaqtlari = [];
 				const boshlanishVaqti = Date.now();
 
-				for (let i = 0; i < data.length; i++) {
-					if (!isRunning) break;
-
-					const row = data[i];
-					const pinfl = String(
-						row.PINFL ||
+				// ── PINFL larni tayyorlash va tozalash ──────────
+				const skippedInvalid = [];
+				const pinflList = data
+					.map((row) => {
+						const raw =
+							row.PINFL ||
 							row.JSHSHR ||
 							row.pinfl ||
 							row.jshshr ||
 							Object.values(row)[0] ||
-							"",
-					).trim();
-					if (!pinfl) continue;
+							"";
+						return {
+							raw: String(raw).trim(),
+							clean: cleanPinfl(raw),
+						};
+					})
+					.filter(({ raw, clean }) => {
+						if (!raw) return false; // bo'sh qator — e'tiborsiz qoldiriladi
+						if (!clean) {
+							skippedInvalid.push(raw);
+							return false;
+						}
+						return true;
+					})
+					.map(({ clean }) => clean);
+
+				if (skippedInvalid.length > 0) {
+					log(
+						"warn",
+						`⚠️ ${skippedInvalid.length} ta qator noto'g'ri JSHSHR format (14 raqam emas) — o'tkazib yuborildi`,
+					);
+				}
+
+				// ── BITTA PINFL QAYTA ISHLASH ───────────────────
+				async function handleOne(pinfl, index) {
+					if (!isRunning) return;
 
 					const pinflMasked = pinfl.slice(0, -4) + "****";
 					const t0 = Date.now();
@@ -121,7 +143,7 @@ module.exports = (io) => {
 						if (result.status === "new") {
 							log(
 								"success",
-								`[${i + 1}/${data.length}] ✅ ${pinflMasked} → ${result.fullName} (${formatDuration(dur)})`,
+								`[${index + 1}/${pinflList.length}] ✅ ${pinflMasked} → ${result.fullName} (${formatDuration(dur)})`,
 							);
 							yangiFuqarolar.push({
 								PINFL: pinfl,
@@ -131,14 +153,13 @@ module.exports = (io) => {
 						} else if (result.status === "exists") {
 							log(
 								"info",
-								`[${i + 1}/${data.length}] ⏭️ ${pinflMasked} — avval qo'shilgan (${formatDuration(dur)})`,
+								`[${index + 1}/${pinflList.length}] ⏭️ ${pinflMasked} — avval qo'shilgan (${formatDuration(dur)})`,
 							);
 							otkazildi++;
 						} else {
-							// skip — boshqa mahalla yoki propiska mos kelmaydi
 							log(
 								"warn",
-								`[${i + 1}/${data.length}] ⏭️ ${pinflMasked} — ${result.reason} (${formatDuration(dur)})`,
+								`[${index + 1}/${pinflList.length}] ⏭️ ${pinflMasked} — ${result.reason} (${formatDuration(dur)})`,
 							);
 							otkazildi++;
 						}
@@ -146,7 +167,6 @@ module.exports = (io) => {
 						const dur = Date.now() - t0;
 						pinflVaqtlari.push(dur);
 
-						// Token eskirgan
 						if (err.response?.status === 401) {
 							deleteToken(userId);
 							log(
@@ -155,28 +175,51 @@ module.exports = (io) => {
 							);
 							socket.emit("need_token");
 							isRunning = false;
-							break;
+							return;
+						} else if (err.response?.status === 400) {
+							log(
+								"warn",
+								`[${index + 1}/${pinflList.length}] ⏭️ ${pinflMasked} — Fuqaro ma'lumoti topilmadi (${formatDuration(dur)})`,
+							);
+						} else {
+							log(
+								"warn",
+								`[${index + 1}/${pinflList.length}] ⏭️ ${pinflMasked} — Xatolik yuz berdi: ${err.message.slice(0, 80)} (${formatDuration(dur)})`,
+							);
 						}
-
-						if (!isRunning) break;
-
-						// BOSHQA HAR QANDAY XATO — SKIP qilinadi, Excel ga yozilmaydi
-						log(
-							"warn",
-							`[${i + 1}/${data.length}] ⏭️ ${pinflMasked} — xato`,
-						);
 						xato++;
 					}
 
+					processed++;
 					socket.emit("progress", {
-						current: i + 1,
-						total: data.length,
+						current: processed,
+						total: pinflList.length,
 						topildi,
 						otkazildi,
 						xato,
 					});
 				}
 
+				// ── PARALLEL WORKER POOL ────────────────────────
+				// CONCURRENCY ta worker bir vaqtda ishlaydi
+				// Har biri navbatdagi PINFL ni oladi
+				let cursor = 0;
+
+				async function worker() {
+					while (isRunning && cursor < pinflList.length) {
+						const index = cursor++;
+						await handleOne(pinflList[index], index);
+					}
+				}
+
+				const workers = Array.from(
+					{ length: Math.min(CONCURRENCY, pinflList.length) },
+					() => worker(),
+				);
+
+				await Promise.all(workers);
+
+				// ── EXCEL SAQLASH ────────────────────────────────
 				const downloadUrl = writeExcel({
 					userId,
 					yangiFuqarolar,
