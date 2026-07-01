@@ -1,16 +1,29 @@
 import { addLog } from "./logs.js";
 import { setProgress } from "./progress.js";
+import {
+	openTokenPopup,
+	closeTokenPopup,
+	setTokenError,
+	setSaveBtn,
+} from "./token.js";
+import { startBot } from "./bot.js";
 
 export const socket = io();
+window.socket = socket; // Globalga chiqaramiz (token.js ishlashi uchun)
+
+socket.on("connect", () => {
+	socket.emit("check_auth_status");
+});
 
 socket.on("log", ({ type, text }) => addLog(text, type));
 
-socket.on("need_login", () => {
-	document.getElementById("loginBanner").classList.add("visible");
+socket.on("need_session", () => {
+	openTokenPopup();
 });
 
-socket.on("login_confirmed", () => {
-	document.getElementById("loginBanner").classList.remove("visible");
+socket.on("session_error", (msg) => {
+	setTokenError(msg);
+	setSaveBtn("normal");
 });
 
 socket.on("progress", ({ current, total, topildi, otkazildi, xato }) => {
@@ -38,6 +51,5 @@ socket.on("done", ({ topildi, otkazildi, xato, umumiyVaqt, downloadUrl }) => {
         <div class="result-row"><span>Umumiy ketgan vaqt</span><span>${umumiyVaqt}</span></div>
     `;
 	document.getElementById("downloadLink").href = downloadUrl;
-	addLog("Tugadi!", "success");
 	card.scrollIntoView({ behavior: "smooth" });
 });

@@ -1,41 +1,6 @@
-import { socket } from "./socket.js";
-import { addLog } from "./logs.js";
 import { startBot } from "./bot.js";
 
-export function openTokenPopup() {
-	document.getElementById("tokenPopup").classList.add("visible");
-	document.getElementById("tokenInput").focus();
-	// Xato yozuvni tozalash
-	setTokenError("");
-	setSaveBtn("normal");
-}
-
-export function closeTokenPopup() {
-	document.getElementById("tokenPopup").classList.remove("visible");
-	document.getElementById("tokenInput").value = "";
-	setTokenError("");
-	setSaveBtn("normal");
-	document.getElementById("startBtn").disabled = false;
-	document.getElementById("stopBtn").disabled = true;
-}
-
-export function saveToken() {
-	const token = document.getElementById("tokenInput").value.trim();
-	if (!token) {
-		setTokenError("Token bo'sh!");
-		return;
-	}
-	// Loading holati
-	setSaveBtn("loading");
-	setTokenError("");
-
-	const userId = localStorage.getItem("userId");
-	socket.emit("save_token", { userId, token });
-}
-
-// =========================
-// YORDAMCHI
-// =========================
+// DOM yordamchi funksiyalari
 function setTokenError(msg) {
 	const el = document.getElementById("tokenError");
 	if (!el) return;
@@ -55,24 +20,55 @@ function setSaveBtn(state) {
 	}
 }
 
-// =========================
-// SOCKET EVENTS
-// =========================
-socket.on("need_token", () => {
-	openTokenPopup();
-});
-
-socket.on("token_verifying", () => {
-	setSaveBtn("loading");
-});
-
-socket.on("token_error", (msg) => {
-	setTokenError(msg);
+export function openTokenPopup() {
+	document.getElementById("tokenPopup").classList.add("visible");
+	setTokenError("");
 	setSaveBtn("normal");
-});
+}
 
-socket.on("token_ok", () => {
-	closeTokenPopup();
-	addLog("✅ Token saqlandi", "success");
-	startBot();
-});
+export function closeTokenPopup() {
+	document.getElementById("tokenPopup").classList.remove("visible");
+	document.getElementById("startBtn").disabled = false;
+	document.getElementById("stopBtn").disabled = true;
+}
+
+export function saveToken() {
+	const sessionId = document.getElementById("sessionInput").value.trim();
+	const cookie = document.getElementById("cookieInput").value.trim();
+	const mahallaId = document.getElementById("mahallaInput").value.trim();
+
+	if (!sessionId || !cookie || !mahallaId) {
+		setTokenError("Barcha maydonlarni to'ldiring!");
+		return;
+	}
+
+	setSaveBtn("loading");
+
+	window.socket.on("session_ok", () => {
+		setTokenError("");
+		setSaveBtn("normal");
+		document.getElementById("tokenPopup").classList.remove("visible");
+		document.getElementById("startBtn").disabled = false;
+		document.getElementById("stopBtn").disabled = true;
+
+		startBot(); // Botni ishga tushiramiz
+	});
+
+	window.socket.on("session_error", (msg) => {
+		setTokenError(msg);
+		setSaveBtn("normal");
+		document.getElementById("startBtn").disabled = false;
+		document.getElementById("stopBtn").disabled = true;
+	});
+
+	// Global socket'ni ishlatamiz (main.js orqali window ga chiqqan)
+	window.socket.emit("save_session", {
+		userId: localStorage.getItem("userId"),
+		sessionId,
+		cookie,
+		mahallaId,
+	});
+}
+
+// Boshqa fayllar uchun eksportlar
+export { setTokenError, setSaveBtn };

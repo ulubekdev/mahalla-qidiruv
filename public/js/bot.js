@@ -14,6 +14,15 @@ export async function startBot() {
 		return addLog("Excel fayl tanlang!", "error");
 	}
 
+	const sessionId = document.getElementById("sessionInput").value.trim();
+	const cookie = document.getElementById("cookieInput").value.trim();
+	const mahallaId = document.getElementById("mahallaInput").value.trim();
+
+	if (!sessionId || !cookie || !mahallaId) {
+		openTokenPopup();
+		return addLog("Sessiya ma'lumotlarini to'ldiring!", "error");
+	}
+
 	document.getElementById("startBtn").disabled = true;
 	document.getElementById("stopBtn").disabled = false;
 
@@ -30,17 +39,25 @@ export async function startBot() {
 
 		if (!result.success) {
 			addLog(result.error, "error");
+			document.getElementById("startBtn").disabled = false;
+			document.getElementById("stopBtn").disabled = true;
 			return;
 		}
 
+		// Serverga sessiya ma'lumotlari bilan birga yuboramiz
 		socket.emit("start_bot", {
 			filePath: result.filePath,
 			userId,
+			sessionId,
+			cookie,
+			mahallaId,
 		});
 
-		addLog("Qidiruv boshlandi", "success");
+		addLog("Qidiruv boshlandi...", "success");
 	} catch (err) {
-		addLog(err.message, "error");
+		addLog("Serverga ulanishda xatolik: " + err.message, "error");
+		document.getElementById("startBtn").disabled = false;
+		document.getElementById("stopBtn").disabled = true;
 	}
 }
 
@@ -49,4 +66,5 @@ export function stopBot() {
 
 	document.getElementById("stopBtn").disabled = true;
 	document.getElementById("startBtn").disabled = false;
+	addLog("Bot to'xtatildi", "warn");
 }

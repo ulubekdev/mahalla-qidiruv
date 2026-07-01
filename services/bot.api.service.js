@@ -7,22 +7,27 @@ const TIMEOUT_SHORT_INFO = Number(process.env.TIMEOUT_SHORT_INFO) || 8000;
 const TIMEOUT_EXISTS = Number(process.env.TIMEOUT_EXISTS) || 8000;
 const TIMEOUT_CHECK_ADDR = Number(process.env.TIMEOUT_CHECK_ADDR) || 8000;
 
-function createApi(token) {
+// Token olib tashlandi, faqat sessionId va cookie qoldi
+function createApi(sessionId, cookie) {
 	return axios.create({
 		baseURL: process.env.API_BASE,
 		headers: {
-			Authorization: `Bearer ${token}`,
 			"Content-Type": "application/json",
 			Accept: "application/json, text/plain, */*",
+			"X-Session-ID": sessionId,
+			Cookie: cookie,
+			"X-Year": "2026",
+			"User-Agent":
+				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+			Referer: "https://mahalla.ijro.uz/dashboard/list/population",
+			Origin: "https://mahalla.ijro.uz",
 		},
-		decompress: true,
-		timeout: Number(process.env.TIMEOUT_RESULT) || 8000,
+		timeout: 8000,
 	});
 }
 
 async function getShortInfo(api, pinfl) {
 	const birthDate = parseBirthDate(pinfl);
-	const pinflMasked = pinfl.slice(0, -4) + "****";
 	if (!birthDate) throw new Error(`Noto'g'ri JSHSHR`);
 
 	const res = await api.post(
@@ -32,8 +37,7 @@ async function getShortInfo(api, pinfl) {
 	);
 
 	const r = res.data?.response;
-	if (!r || !r.citizen_id)
-		throw new Error(`Fuqaro topilmadi`);
+	if (!r || !r.citizen_id) throw new Error(`Fuqaro topilmadi`);
 
 	return { citizenId: r.citizen_id, fullName: r.full_name || "" };
 }
@@ -61,20 +65,19 @@ async function checkAddress(api, citizenId) {
 	return !!r?.exists;
 }
 
-// =========================
-// ASOSIY OQIM
-// pinflMasked endi shu yerda, parametr sifatida olinadi
-// =========================
 async function processPinfl(api, pinfl, ourMahallaId) {
-	const pinflMasked = pinfl.slice(0, -4) + "****";
-
+	// 1. Fuqaro ma'lumotini olish
 	const { citizenId, fullName } = await getShortInfo(api, pinfl);
+
+	// 2. Tizimda mavjudligini tekshirish
 	const { exists, mahallaId } = await checkExists(api, citizenId);
 
+	// Agar allaqachon bizning mahallada bo'lsa
 	if (exists && mahallaId === ourMahallaId) {
 		return { status: "exists", fullName };
 	}
 
+	// Agar boshqa mahallada bo'lsa
 	if (exists && mahallaId !== ourMahallaId) {
 		return {
 			status: "skip",
@@ -82,6 +85,7 @@ async function processPinfl(api, pinfl, ourMahallaId) {
 		};
 	}
 
+	// 3. Propiskasini tekshirish
 	const addressOk = await checkAddress(api, citizenId);
 
 	if (!addressOk) {

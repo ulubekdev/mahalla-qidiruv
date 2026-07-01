@@ -1,14 +1,13 @@
 "use strict";
 
 const fs = require("fs");
-
 const { readExcel, writeExcel } = require("../services/excel.service");
 const {
-	saveToken,
-	getToken,
-	deleteToken,
-	verifyToken,
-} = require("../services/token.service");
+	saveSession,
+	getSession,
+	deleteSession,
+	verifySession,
+} = require("../services/token.service"); // Fayl nomini o'zgartirmagan bo'lsangiz
 const { createApi, processPinfl } = require("../services/bot.api.service");
 const formatDuration = require("../helpers/formatDuration");
 const cleanPinfl = require("../helpers/cleanPinfl");
@@ -32,224 +31,167 @@ module.exports = (io) => {
 			socket.emit("status", "idle");
 		});
 
-		socket.on("save_token", async ({ userId, token }) => {
-			const cleanToken = token.replace(/^Bearer\s+/i, "").trim();
-			if (!cleanToken) return socket.emit("token_error", "Token bo'sh!");
+		// ── SESSIYANI SAQLASH VA TEKSHIRISH ──────────────────
+		socket.on(
+			"save_session",
+			async ({ userId, sessionId, cookie, mahallaId }) => {
+				if (!sessionId || !cookie)
+					return socket.emit(
+						"session_error",
+						"Ma'lumotlar to'liq emas!",
+					);
 
-			socket.emit("token_verifying");
-			const valid = await verifyToken(cleanToken);
+				socket.emit("session_verifying");
 
-			if (!valid) {
-				return socket.emit(
-					"token_error",
-					"Token noto'g'ri yoki eskirgan. Qaytadan login qiling.",
-				);
-			}
+				// Sessiyani tekshiramiz
+				const valid = await verifySession(sessionId, cookie);
 
-			saveToken(userId, cleanToken);
-			socket.emit("token_ok");
-		});
-
-		socket.on("start_bot", async ({ filePath, userId, mahallaId }) => {
-			if (isRunning) return log("warn", "Bot allaqachon ishlayapti!");
-			if (!userId) return log("error", "userId yo'q!");
-
-			const ourMahallaId = mahallaId || process.env.MAHALLA_ID;
-			if (!ourMahallaId) return log("error", "Mahalla ID berilmagan!");
-
-			const token = getToken(userId);
-			if (!token) {
-				socket.emit("need_token");
-				return;
-			}
-
-			isRunning = true;
-			socket.emit("status", "running");
-
-			const api = createApi(token);
-
-			try {
-				if (!fs.existsSync(filePath)) {
-					log("error", `Fayl topilmadi: ${filePath}`);
-					isRunning = false;
-					socket.emit("status", "idle");
-					return;
-				}
-
-				const data = readExcel(filePath);
-				log(
-					"info",
-					`📋 Jami ${data.length} ta PINFL — ${CONCURRENCY} parallel`,
-				);
-
-				const yangiFuqarolar = [];
-				const xatoFuqarolar = [];
-				let topildi = 0,
-					otkazildi = 0,
-					xato = 0;
-				let processed = 0;
-				const pinflVaqtlari = [];
-				const boshlanishVaqti = Date.now();
-
-				// ── PINFL larni tayyorlash va tozalash ──────────
-				const skippedInvalid = [];
-				const pinflList = data
-					.map((row) => {
-						const raw =
-							row.PINFL ||
-							row.JSHSHR ||
-							row.pinfl ||
-							row.jshshr ||
-							Object.values(row)[0] ||
-							"";
-						return {
-							raw: String(raw).trim(),
-							clean: cleanPinfl(raw),
-						};
-					})
-					.filter(({ raw, clean }) => {
-						if (!raw) return false; // bo'sh qator — e'tiborsiz qoldiriladi
-						if (!clean) {
-							skippedInvalid.push(raw);
-							return false;
-						}
-						return true;
-					})
-					.map(({ clean }) => clean);
-
-				if (skippedInvalid.length > 0) {
-					log(
-						"warn",
-						`⚠️ ${skippedInvalid.length} ta qator noto'g'ri JSHSHR format (14 raqam emas) — o'tkazib yuborildi`,
+				if (!valid) {
+					return socket.emit(
+						"session_error",
+						"Sessiya noto'g'ri yoki eskirgan. Brauzerdan yangi ma'lumotlarni oling.",
 					);
 				}
 
-				// ── BITTA PINFL QAYTA ISHLASH ───────────────────
-				async function handleOne(pinfl, index) {
-					if (!isRunning) return;
+				saveSession(userId, sessionId, cookie, mahallaId);
+				socket.emit("session_ok", { sessionId, cookie, mahallaId });
+			},
+		);
 
-					const pinflMasked = pinfl.slice(0, -4) + "****";
-					const t0 = Date.now();
+		// ── BOTNI ISHGA TUSHIRISH ────────────────────────────
+		socket.on(
+			"start_bot",
+			async ({ filePath, userId, sessionId, cookie, mahallaId }) => {
+				if (isRunning) return log("warn", "Bot allaqachon ishlayapti!");
 
-					try {
-						const result = await processPinfl(
-							api,
-							pinfl,
-							ourMahallaId,
-						);
-						const dur = Date.now() - t0;
-						pinflVaqtlari.push(dur);
+				const session = getSession(userId);
+				if (!session) {
+					socket.emit("need_session");
+					return;
+				}
 
-						if (result.status === "new") {
-							log(
-								"success",
-								`[${index + 1}/${pinflList.length}] ✅ ${pinflMasked} → ${result.fullName} (${formatDuration(dur)})`,
-							);
-							yangiFuqarolar.push({
-								PINFL: pinfl,
-								FISH: result.fullName,
-							});
-							topildi++;
-						} else if (result.status === "exists") {
-							log(
-								"info",
-								`[${index + 1}/${pinflList.length}] ⏭️ ${pinflMasked} — avval qo'shilgan (${formatDuration(dur)})`,
-							);
-							otkazildi++;
-						} else {
-							log(
-								"warn",
-								`[${index + 1}/${pinflList.length}] ⏭️ ${pinflMasked} — ${result.reason} (${formatDuration(dur)})`,
-							);
-							otkazildi++;
-						}
-					} catch (err) {
-						const dur = Date.now() - t0;
-						pinflVaqtlari.push(dur);
+				isRunning = true;
+				socket.emit("status", "running");
 
-						if (err.response?.status === 401) {
-							deleteToken(userId);
-							log(
-								"error",
-								"⚠️ Token eskirdi! Qaytadan login qiling.",
-							);
-							socket.emit("need_token");
-							isRunning = false;
-							return;
-						} else if (err.response?.status === 400) {
-							log(
-								"warn",
-								`[${index + 1}/${pinflList.length}] ⏭️ ${pinflMasked} — Fuqaro ma'lumoti topilmadi (${formatDuration(dur)})`,
-							);
-						} else {
-							log(
-								"warn",
-								`[${index + 1}/${pinflList.length}] ⏭️ ${pinflMasked} — Xatolik yuz berdi: ${err.message.slice(0, 80)} (${formatDuration(dur)})`,
-							);
-						}
-						xato++;
+				// API ga sessiya ma'lumotlarini yuboramiz
+				const api = createApi(session.sessionId, session.cookie);
+
+				try {
+					if (!fs.existsSync(filePath)) {
+						log("error", `Fayl topilmadi`);
+						isRunning = false;
+						socket.emit("status", "idle");
+						return;
 					}
 
-					processed++;
-					socket.emit("progress", {
-						current: processed,
-						total: pinflList.length,
+					const data = readExcel(filePath);
+					log(
+						"info",
+						`📋 Jami ${data.length} ta PINFL — ${CONCURRENCY} parallel`,
+					);
+
+					const yangiFuqarolar = [];
+					let topildi = 0,
+						otkazildi = 0,
+						xato = 0,
+						processed = 0;
+					const pinflVaqtlari = [];
+					const boshlanishVaqti = Date.now();
+
+					const pinflList = data
+						.map((r) =>
+							cleanPinfl(
+								r.PINFL || r.JSHSHR || Object.values(r)[0],
+							),
+						)
+						.filter(Boolean);
+
+					async function handleOne(pinfl, index) {
+						if (!isRunning) return;
+						const t0 = Date.now();
+
+						try {
+							const result = await processPinfl(
+								api,
+								pinfl,
+								session.mahallaId,
+							);
+							const dur = Date.now() - t0;
+							pinflVaqtlari.push(dur);
+
+							if (result.status === "new") {
+								log(
+									"success",
+									`[${index + 1}] ✅ ${pinfl} — ${result.fullName}`,
+								);
+								yangiFuqarolar.push({
+									PINFL: pinfl,
+									FISH: result.fullName,
+								});
+								topildi++;
+							} else {
+								log(
+									"info",
+									`[${index + 1}] ⏭️ ${pinfl} — ${result.status === "exists" ? "Avval kiritilgan" : result.reason}`,
+								);
+								otkazildi++;
+							}
+						} catch (err) {
+							if (
+								err.response?.status === 401 ||
+								err.response?.status === 403
+							) {
+								deleteSession(userId);
+								log("error", "⚠️ Sessiya tugadi!");
+								socket.emit("need_session");
+								isRunning = false;
+								return;
+							}
+							xato++;
+						}
+						processed++;
+						socket.emit("progress", {
+							current: processed,
+							total: pinflList.length,
+							topildi,
+							otkazildi,
+							xato,
+						});
+					}
+
+					let cursor = 0;
+					async function worker() {
+						while (isRunning && cursor < pinflList.length) {
+							await handleOne(pinflList[cursor++], cursor - 1);
+						}
+					}
+
+					await Promise.all(
+						Array.from(
+							{ length: Math.min(CONCURRENCY, pinflList.length) },
+							() => worker(),
+						),
+					);
+
+					const downloadUrl = writeExcel({ userId, yangiFuqarolar });
+					socket.emit("done", {
 						topildi,
 						otkazildi,
 						xato,
+						umumiyVaqt: formatDuration(
+							Date.now() - boshlanishVaqti,
+						),
+						downloadUrl,
 					});
+				} catch (err) {
+					log("error", `KRITIK XATO: ${err.message}`);
+				} finally {
+					isRunning = false;
+					socket.emit("status", "idle");
+					if (filePath && fs.existsSync(filePath))
+						fs.unlink(filePath, () => {});
 				}
-
-				// ── PARALLEL WORKER POOL ────────────────────────
-				// CONCURRENCY ta worker bir vaqtda ishlaydi
-				// Har biri navbatdagi PINFL ni oladi
-				let cursor = 0;
-
-				async function worker() {
-					while (isRunning && cursor < pinflList.length) {
-						const index = cursor++;
-						await handleOne(pinflList[index], index);
-					}
-				}
-
-				const workers = Array.from(
-					{ length: Math.min(CONCURRENCY, pinflList.length) },
-					() => worker(),
-				);
-
-				await Promise.all(workers);
-
-				// ── EXCEL SAQLASH ────────────────────────────────
-				const downloadUrl = writeExcel({
-					userId,
-					yangiFuqarolar,
-					xatoFuqarolar,
-				});
-
-				const umumiyVaqt = Date.now() - boshlanishVaqti;
-				const ortachaVaqt = pinflVaqtlari.length
-					? Math.round(
-							pinflVaqtlari.reduce((a, b) => a + b, 0) /
-								pinflVaqtlari.length,
-						)
-					: 0;
-
-				socket.emit("done", {
-					topildi,
-					otkazildi,
-					xato,
-					umumiyVaqt: formatDuration(umumiyVaqt),
-					ortachaVaqt: formatDuration(ortachaVaqt),
-					downloadUrl,
-				});
-			} catch (err) {
-				log("error", `KRITIK XATO: ${err.message}`);
-			} finally {
-				isRunning = false;
-				socket.emit("status", "idle");
-				if (filePath && fs.existsSync(filePath))
-					fs.unlink(filePath, () => {});
-			}
-		});
+			},
+		);
 	});
 };
